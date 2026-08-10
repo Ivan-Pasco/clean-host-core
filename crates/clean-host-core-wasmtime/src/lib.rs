@@ -233,6 +233,23 @@ impl WasmRuntime for WasmtimeRuntime {
     fn engine_id(&self) -> String {
         format!("wasmtime {}", env!("CARGO_PKG_VERSION"))
     }
+
+    fn introspector(&self) -> Box<clean_host_core::bridge::Introspect> {
+        Box::new(|bytes: &[u8]| {
+            // Reject anything that is not a component before reporting an
+            // interface list, so a core module cannot look like a bridge with
+            // no exports.
+            if !is_component(bytes) {
+                return Err("not a Component Model component (core module?)".to_string());
+            }
+            Ok(introspect(bytes))
+        })
+    }
+}
+
+/// Component Model preamble: magic, then version 0x0d 0x00, layer 0x01 0x00.
+fn is_component(bytes: &[u8]) -> bool {
+    bytes.len() >= 8 && &bytes[0..4] == b"\0asm" && bytes[6] == 0x01
 }
 
 /// Read a component's imported and exported interface names straight from its
@@ -264,7 +281,14 @@ fn introspect(bytes: &[u8]) -> (Vec<String>, Vec<String>) {
             }
             Payload::ComponentExportSection(section) if depth == 0 => {
                 for export in section.into_iter().flatten() {
-                    if matches!(export.kind, ComponentExternalKind::Instance) {
+                    // Both instances (interfaces) and plain functions count.
+                    // A guest's entry points are bare `func` exports, and
+                    // dropping them here silently produces a composed component
+                    // with nothing to call.
+                    if matches!(
+                        export.kind,
+                        ComponentExternalKind::Instance | ComponentExternalKind::Func
+                    ) {
                         exports.push(extern_name(&export.name));
                     }
                 }

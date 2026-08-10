@@ -65,6 +65,12 @@ pub trait WasmRuntime: Send + Sync + 'static {
 
     /// Human-readable engine identity, recorded in the capability manifest.
     fn engine_id(&self) -> String;
+
+    /// Read a component's (imports, exports) without instantiating it.
+    ///
+    /// Bridge discovery needs this before composition, and the library must not
+    /// learn to parse Wasm itself (CH-06) — so the adapter supplies it.
+    fn introspector(&self) -> Box<crate::bridge::Introspect>;
 }
 
 /// A component that has been compiled and is ready to instantiate.

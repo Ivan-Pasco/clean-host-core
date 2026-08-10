@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # Wasmtime 47 requires 1.94. The other Clean repos pin 1.75; this workspace
 # cannot, because the Wasm runtime is a hard dependency of every host.
@@ -33,6 +33,9 @@ wasmtime-wasi = { version = "47", features = ["p3"] }
 wit-parser = "0.255"
 wasmparser = "0.255"
 wat = "1"
+
+# Component composition (CLNH-25, ADR-0025). Pinned per COMP-24.
+wac-graph = "0.10"
 
 [profile.release]
 lto = "thin"

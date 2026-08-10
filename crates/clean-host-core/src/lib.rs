@@ -14,6 +14,8 @@
 //! host calls in; this library never calls out. The only files it touches are
 //! the config, the guest/bridge `.wasm` files, and the capability manifest.
 
+pub mod bridge;
+pub mod compose;
 pub mod config;
 pub mod envelope;
 pub mod manifest;
@@ -26,6 +28,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
+pub use bridge::DiscoveredBridge;
+pub use compose::UnsatisfiedImport;
 pub use config::{DeploymentMode, GuestBlock, HostBlock, HostConfig, RuntimeBlock};
 pub use envelope::{EnvelopeError, EnvelopeImpl, EnvelopeRegistry};
 pub use manifest::{CapabilitiesManifest, CapabilityEntry, CapabilityStatus};
@@ -107,6 +111,7 @@ pub struct Host {
     started: Instant,
     generation: Arc<AtomicU64>,
     reload_state: Mutex<(Option<SystemTime>, Option<bool>)>,
+    warnings: Mutex<Vec<String>>,
 }
 
 impl Host {
@@ -121,6 +126,7 @@ impl Host {
             started: Instant::now(),
             generation: Arc::new(AtomicU64::new(0)),
             reload_state: Mutex::new((None, None)),
+            warnings: Mutex::new(Vec::new()),
         })
     }
 
@@ -150,6 +156,16 @@ impl Host {
 
     pub fn config(&self) -> &HostConfig {
         &self.config
+    }
+
+    /// Non-fatal problems found during composition, for the concrete host to
+    /// log. The library does not write to stderr itself (CH-01).
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.lock().unwrap().clone()
+    }
+
+    fn warn(&self, message: String) {
+        self.warnings.lock().unwrap().push(message);
     }
 
     pub fn runtime_capabilities(&self) -> RuntimeCapabilities {
@@ -194,24 +210,58 @@ impl Host {
             ))
         })?;
 
-        // M0 composes zero bridges: the guest links against the host's own
-        // interfaces plus the ambient WASI/clean:host stack. Bridge discovery
-        // and WAC composition land in Phase 3; until then a configured bridge
-        // is rejected rather than silently ignored (CH-05).
-        if !self.config.bridges.is_empty() {
-            return Err(HostError::Composition(format!(
-                "`[bridges]` configures {} bridge(s), but bridge composition is not implemented \
-                 yet (Phase 3). Remove the `[bridges]` block to run a bare guest.",
-                self.config.bridges.len()
-            )));
-        }
-
-        let component = self.runtime.load(&bytes).map_err(|e| match e {
+        // Inspect the guest before composing, so capability checks run against
+        // what it actually imports rather than what it was expected to.
+        let guest_probe = self.runtime.load(&bytes).map_err(|e| match e {
             RuntimeError::Load(msg) => HostError::Config(format!(
                 "guest component `{}` could not be loaded: {msg}",
                 guest_path.display()
             )),
             other => HostError::Runtime(other.to_string()),
+        })?;
+        let guest_imports = guest_probe.imports();
+        let guest_exports = guest_probe.exports();
+        drop(guest_probe);
+
+        // §5.1–5.2: discover and validate every configured bridge.
+        let introspect = self.runtime.introspector();
+        let bridges = bridge::discover(&self.config.bridges, introspect.as_ref())?;
+        for b in &bridges {
+            bridge::check_imports(b)?;
+            let required = InterfaceRef::parse(&b.interface);
+            bridge::check_version(b, &required)?;
+        }
+
+        // SRVH-01/02: every imported capability must be provided, and the
+        // diagnostic names the `[bridges]` key that is missing.
+        let mut provided = self.provided.interfaces.clone();
+        provided.extend(self.envelopes.interfaces());
+        compose::check_capabilities(&guest_imports, &provided, &bridges)?;
+
+        for unused in compose::unused_bridges(&guest_imports, &bridges) {
+            // CH-04: not granted, and said out loud — a configured-but-unused
+            // bridge is usually a stale config line.
+            self.warn(format!(
+                "`[bridges]` configures `{unused}`, which the guest does not import; not composed"
+            ));
+        }
+
+        // Only compose bridges the guest actually asked for.
+        let wanted: Vec<bridge::DiscoveredBridge> = bridges
+            .into_iter()
+            .filter(|b| {
+                let path = InterfaceRef::parse(&b.interface).path;
+                guest_imports
+                    .iter()
+                    .any(|i| InterfaceRef::parse(i).path == path)
+            })
+            .collect();
+
+        let composed_bytes =
+            compose::compose(&bytes, &self.config.guest.name, &guest_exports, &wanted)?;
+
+        let component = self.runtime.load(&composed_bytes).map_err(|e| {
+            HostError::Composition(format!("composed component could not be loaded: {e}"))
         })?;
         let component: Arc<dyn LoadedComponent> = Arc::from(component);
 
