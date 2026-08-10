@@ -19,6 +19,7 @@
 //! no-op that fails mysteriously at request time.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use clean_host_core::runtime::{
     Instance as CoreInstance, LoadedComponent, RuntimeCapabilities, RuntimeError, WasmRuntime,
@@ -68,6 +69,12 @@ pub struct EngineConfig {
     pub pooling: bool,
     pub memory_max: u64,
     pub epoch_interruption: bool,
+    /// How often the epoch is advanced. `[runtime] epoch-interval`.
+    pub epoch_interval: Duration,
+    /// How many ticks a single guest call may run for before it is trapped.
+    /// The concrete host derives this from its own timeout — for clean-server,
+    /// `[server] request-timeout`.
+    pub epoch_deadline_ticks: u64,
 }
 
 impl Default for EngineConfig {
@@ -76,6 +83,10 @@ impl Default for EngineConfig {
             pooling: true,
             memory_max: 512 * 1024 * 1024,
             epoch_interruption: true,
+            epoch_interval: Duration::from_millis(10),
+            // 10ms x 3000 = 30s, matching the documented request-timeout
+            // default. Hosts override this with their real timeout.
+            epoch_deadline_ticks: 3000,
         }
     }
 }
@@ -84,6 +95,9 @@ impl Default for EngineConfig {
 pub struct WasmtimeRuntime {
     engine: Engine,
     capabilities: RuntimeCapabilities,
+    /// Ticks a store is given per guest call before epoch interruption traps
+    /// it. Zero means unlimited (epoch interruption disabled).
+    epoch_deadline_ticks: u64,
     /// Built once and cloned per component load. The concrete host populates it
     /// with its own interfaces via [`WasmtimeRuntime::linker_mut`] before
     /// composing.
@@ -123,11 +137,33 @@ impl WasmtimeRuntime {
         wasmtime_wasi::p3::add_to_linker(&mut linker)
             .map_err(|e| RuntimeError::Other(format!("cannot add WASI to linker: {e:#}")))?;
 
+        if config.epoch_interruption {
+            // Epoch interruption only bites if something advances the epoch.
+            // Without this ticker every store's deadline is permanently in the
+            // future and per-request timeouts silently do nothing.
+            let ticker_engine = engine.clone();
+            let interval = config.epoch_interval;
+            std::thread::Builder::new()
+                .name("clean-host-core-epoch".into())
+                .spawn(move || loop {
+                    std::thread::sleep(interval);
+                    ticker_engine.increment_epoch();
+                })
+                .map_err(|e| {
+                    RuntimeError::Other(format!("cannot start epoch ticker thread: {e}"))
+                })?;
+        }
+
         Ok(Self {
             engine,
             capabilities: RuntimeCapabilities {
                 epoch_interruption: config.epoch_interruption,
                 pooling: pooling_active,
+            },
+            epoch_deadline_ticks: if config.epoch_interruption {
+                config.epoch_deadline_ticks
+            } else {
+                0
             },
             linker,
         })
@@ -184,6 +220,7 @@ impl WasmRuntime for WasmtimeRuntime {
             component,
             engine: self.engine.clone(),
             linker: Arc::new(self.linker.clone()),
+            epoch_deadline_ticks: self.epoch_deadline_ticks,
             imports,
             exports,
         }))
@@ -252,17 +289,22 @@ struct WasmtimeComponent {
     component: Component,
     engine: Engine,
     linker: Arc<Linker<StoreState>>,
+    epoch_deadline_ticks: u64,
     imports: Vec<String>,
     exports: Vec<String>,
 }
 
 impl LoadedComponent for WasmtimeComponent {
     fn instantiate(&self) -> Result<Box<dyn CoreInstance>, RuntimeError> {
-        let store = Store::new(&self.engine, StoreState::new());
+        let mut store = Store::new(&self.engine, StoreState::new());
+        if self.epoch_deadline_ticks > 0 {
+            store.set_epoch_deadline(self.epoch_deadline_ticks);
+        }
         Ok(Box::new(WasmtimeInstance {
             store,
             component: self.component.clone(),
             linker: Arc::clone(&self.linker),
+            epoch_deadline_ticks: self.epoch_deadline_ticks,
             instance: None,
         }))
     }
@@ -284,6 +326,7 @@ pub struct WasmtimeInstance {
     pub store: Store<StoreState>,
     pub component: Component,
     pub linker: Arc<Linker<StoreState>>,
+    epoch_deadline_ticks: u64,
     /// Populated on first use by the concrete host.
     pub instance: Option<wasmtime::component::Instance>,
 }
@@ -293,7 +336,13 @@ impl CoreInstance for WasmtimeInstance {
         // A fresh store drops all guest linear memory and resource state, which
         // is the isolation guarantee between requests (server §1.2). With the
         // pooling allocator the underlying slot is reused, so this stays cheap.
-        self.store = Store::new(self.store.engine(), StoreState::new());
+        let mut store = Store::new(self.store.engine(), StoreState::new());
+        // The fresh store starts with no deadline; without this the next
+        // request would run uninterruptible.
+        if self.epoch_deadline_ticks > 0 {
+            store.set_epoch_deadline(self.epoch_deadline_ticks);
+        }
+        self.store = store;
         self.instance = None;
         Ok(())
     }
