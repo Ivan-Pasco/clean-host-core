@@ -1,0 +1,20 @@
+[package]
+name = "clean-host-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared runtime library every concrete Clean host links: config, composition, WASI, pooling, capability manifest."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+wit-parser = { workspace = true }
+wasmparser = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

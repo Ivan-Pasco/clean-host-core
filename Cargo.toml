@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/clean-host-core",
+    "crates/clean-host-core-wasmtime",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# Wasmtime 47 requires 1.94. The other Clean repos pin 1.75; this workspace
+# cannot, because the Wasm runtime is a hard dependency of every host.
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Ivan-Pasco/clean-host-core"
+
+[workspace.dependencies]
+clean-host-core = { path = "crates/clean-host-core" }
+
+anyhow = "1"
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = { version = "1", features = ["serde"] }
+toml = "0.8"
+tempfile = "3"
+
+# Wasm runtime and component tooling. Pinned as a set: wasmtime, its WASI
+# implementation, and the wasm-tools family share an internal version lockstep
+# (wasmparser/wit-parser 0.255 pairs with wasmtime 47).
+wasmtime = "47"
+wasmtime-wasi = { version = "47", features = ["p3"] }
+wit-parser = "0.255"
+wasmparser = "0.255"
+wat = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
