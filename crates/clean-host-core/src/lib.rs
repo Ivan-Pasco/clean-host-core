@@ -18,6 +18,7 @@ pub mod bridge;
 pub mod compose;
 pub mod config;
 pub mod envelope;
+pub mod log;
 pub mod manifest;
 pub mod parity;
 pub mod pool;
@@ -32,6 +33,7 @@ pub use bridge::DiscoveredBridge;
 pub use compose::UnsatisfiedImport;
 pub use config::{DeploymentMode, GuestBlock, HostBlock, HostConfig, RuntimeBlock};
 pub use envelope::{EnvelopeError, EnvelopeImpl, EnvelopeRegistry};
+pub use log::{Level, LogSink, Logger, Record, StderrSink};
 pub use manifest::{CapabilitiesManifest, CapabilityEntry, CapabilityStatus};
 pub use pool::{InstanceGuard, InstancePool, PoolConfig, PoolError, PoolHealth};
 pub use runtime::{Instance, LoadedComponent, RuntimeCapabilities, RuntimeError, WasmRuntime};
@@ -112,6 +114,8 @@ pub struct Host {
     generation: Arc<AtomicU64>,
     reload_state: Mutex<(Option<SystemTime>, Option<bool>)>,
     warnings: Mutex<Vec<String>>,
+    /// Where `clean:host/log` records go (CLNH-66).
+    logger: RwLock<Arc<Logger>>,
 }
 
 impl Host {
@@ -127,6 +131,7 @@ impl Host {
             generation: Arc::new(AtomicU64::new(0)),
             reload_state: Mutex::new((None, None)),
             warnings: Mutex::new(Vec::new()),
+            logger: RwLock::new(Arc::new(Logger::default())),
         })
     }
 
@@ -156,6 +161,23 @@ impl Host {
 
     pub fn config(&self) -> &HostConfig {
         &self.config
+    }
+
+    /// Replace the log sink (CLNH-66).
+    ///
+    /// The default writes to stderr; `clean-server` swaps in one that routes
+    /// records through `tracing`, so guest output interleaves with the host's
+    /// own request logs instead of racing them on the same fd.
+    pub fn set_log_sink(&self, sink: Arc<dyn LogSink>) {
+        let level = self.config.host.log_level.as_str();
+        let min = log::Level::parse(level).unwrap_or(log::Level::Info);
+        *self.logger.write().unwrap() = Arc::new(Logger::new(sink, min));
+    }
+
+    /// The current logger, for the concrete host to hand to composed
+    /// components.
+    pub fn logger(&self) -> Arc<Logger> {
+        Arc::clone(&self.logger.read().unwrap())
     }
 
     /// Non-fatal problems found during composition, for the concrete host to
