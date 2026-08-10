@@ -19,3 +19,8 @@ wac-graph = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[[bench]]
+name = "pool"
+path = "benches/pool.rs"
+harness = false
