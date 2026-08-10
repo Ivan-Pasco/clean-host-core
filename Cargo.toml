@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 # Wasmtime 47 requires 1.94. The other Clean repos pin 1.75; this workspace
 # cannot, because the Wasm runtime is a hard dependency of every host.
