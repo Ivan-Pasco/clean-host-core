@@ -150,8 +150,19 @@ pub fn compose(
     // Wire each guest import to the bridge export that satisfies it.
     let guest_instance = graph.instantiate(guest_id);
     for bridge in bridges {
+        // Both lookups below should be unreachable: every bridge was inserted
+        // into the map immediately above, and `bridge::discover` rejects a
+        // component that does not export its promised interface. They are hard
+        // errors rather than `continue`s anyway, because skipping one silently
+        // yields a component that loads and runs with a capability quietly
+        // missing — the silent fallback CH-05 forbids, and the failure mode is
+        // invisible until a guest calls the interface that was never wired.
         let Some((_, bridge_instance)) = bridge_instances.get(&bridge.interface) else {
-            continue;
+            return Err(HostError::Composition(format!(
+                "internal: bridge `{}` was registered for composition but is missing \
+                 from the instance map",
+                bridge.interface
+            )));
         };
 
         // The export name as the bridge actually spells it, which may carry a
@@ -162,7 +173,12 @@ pub fn compose(
             .iter()
             .find(|e| InterfaceRef::parse(e).path == wanted)
         else {
-            continue;
+            return Err(HostError::Composition(format!(
+                "bridge `{}` at {} does not export `{wanted}`; it exports {:?}",
+                bridge.interface,
+                bridge.path.display(),
+                bridge.exports
+            )));
         };
 
         let export = graph
@@ -185,10 +201,24 @@ pub fn compose(
     // The names come from discovery rather than from the graph: the caller
     // already introspected the component, and re-deriving them here would mean
     // this module learning to read component types.
+    // These names were read off this very component's type section, so every
+    // one of them must alias and re-export. Swallowing a failure here is how a
+    // composition ends up with nothing the host can call: the bytes encode,
+    // startup succeeds, and the first invocation fails on a missing export.
     for export in guest_exports {
-        if let Ok(value) = graph.alias_instance_export(guest_instance, export) {
-            let _ = graph.export(value, export);
-        }
+        let value = graph
+            .alias_instance_export(guest_instance, export)
+            .map_err(|e| {
+                HostError::Composition(format!(
+                    "guest declares export `{export}` but it cannot be aliased \
+                     for re-export: {e:#}"
+                ))
+            })?;
+        graph.export(value, export).map_err(|e| {
+            HostError::Composition(format!(
+                "cannot re-export `{export}` from the composed component: {e:#}"
+            ))
+        })?;
     }
 
     graph.encode(Default::default()).map_err(|e| {

@@ -75,7 +75,10 @@ impl LoadedComponent for FakeComponent {
         self.imports.clone()
     }
     fn exports(&self) -> Vec<String> {
-        vec!["handle".to_string()]
+        // Must match what GUEST_WAT actually exports: composition re-exports
+        // these by name against the real component, so an invented name here
+        // would fail the alias step rather than test anything.
+        vec!["clean:host/handler@0.1.0".to_string()]
     }
 }
 

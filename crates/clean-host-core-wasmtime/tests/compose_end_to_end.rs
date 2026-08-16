@@ -132,6 +132,29 @@ fn a_guest_and_its_bridge_compose_load_and_instantiate() {
     loaded.instantiate().expect("composed component instantiates");
 }
 
+/// A bridge that does not export the interface it was configured for is a
+/// composition error, not a silent skip (CH-05).
+///
+/// Skipping it would encode a component that loads and starts with the
+/// capability quietly absent, failing only when a guest first calls it.
+#[test]
+fn a_bridge_missing_its_promised_export_is_a_composition_error() {
+    let guest_bytes = wat::parse_str(GUEST_WAT).expect("guest wat compiles");
+    let bridge_bytes = wat::parse_str(BRIDGE_WAT).expect("bridge wat compiles");
+
+    // Discovery recorded an export list that does not contain the promised
+    // interface — the shape a drifted or mislabelled bridge produces.
+    let bridge = bridge_fixture(bridge_bytes, vec!["clean:kv/store@0.1.0".into()], vec![]);
+
+    let err = compose(&guest_bytes, "app", &[], std::slice::from_ref(&bridge))
+        .expect_err("a bridge that does not export its interface must be refused");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("clean:session/store"),
+        "the error must name the interface that was promised, got: {msg}"
+    );
+}
+
 /// A bridge whose bytes are not a component is refused with a message naming
 /// the bridge, not a bare WAC panic.
 #[test]
