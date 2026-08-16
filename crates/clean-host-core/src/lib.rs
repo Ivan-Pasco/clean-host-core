@@ -94,7 +94,7 @@ pub struct BridgeHealth {
 #[derive(Debug, Clone, Default)]
 pub struct HostProvided {
     /// Interfaces the host implements natively — for clean-server, the
-    /// `clean:http/*` surface from server §1.3.1.
+    /// `clean:host/*` surface from server §1.3.1.
     pub interfaces: Vec<String>,
 }
 

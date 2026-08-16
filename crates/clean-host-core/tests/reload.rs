@@ -107,7 +107,7 @@ component-model = "0.3.0"
 [guest]
 name = "app"
 wasm = "{}"
-world = "clean:host/server@0.1"
+world = "server"
 
 [runtime]
 instances-min = 1

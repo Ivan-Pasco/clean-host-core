@@ -225,14 +225,25 @@ mod tests {
         }
     }
 
+    /// A host-provided interface satisfies the import via the `host_provided`
+    /// list, not via the ambient short-circuit.
+    ///
+    /// Deliberately spelled with a non-`clean:host/` package: anything under
+    /// `clean:host/` is ambient (CH-03) and would pass this assertion even if
+    /// `host_provided` were empty, which would make the second argument dead
+    /// and the test vacuous.
     #[test]
     fn a_guest_importing_only_host_interfaces_is_satisfied() {
         let result = check_capabilities(
-            &["clean:http/routing@0.1.0".into()],
-            &["clean:http/routing@0.1.0".into()],
+            &["clean:realtime/sockets@0.1.0".into()],
+            &["clean:realtime/sockets@0.1.0".into()],
             &[],
         );
         assert!(result.is_ok());
+
+        // The same import with nothing provided must fail — proving the pass
+        // above came from `host_provided` and not from ambience.
+        assert!(check_capabilities(&["clean:realtime/sockets@0.1.0".into()], &[], &[]).is_err());
     }
 
     #[test]

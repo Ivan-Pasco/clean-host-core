@@ -410,7 +410,7 @@ mod tests {
         // A component that imports one interface and exports another.
         let wat = r#"
             (component
-              (import "clean:http/routing@0.1.0" (instance))
+              (import "clean:host/routing@0.1.0" (instance))
               (core module $m)
               (component $inner
                 (core module $mm)
@@ -420,7 +420,7 @@ mod tests {
         let bytes = wat::parse_str(wat).expect("wat parses");
         let (imports, _exports) = introspect(&bytes);
         assert!(
-            imports.iter().any(|i| i.contains("clean:http/routing")),
+            imports.iter().any(|i| i.contains("clean:host/routing")),
             "expected routing import, got {imports:?}"
         );
     }

@@ -15,7 +15,7 @@ use std::fmt;
 /// A parsed WIT interface reference: `package:ns/iface@version`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InterfaceRef {
-    /// Everything before `@` — e.g. `clean:http/routing`.
+    /// Everything before `@` — e.g. `clean:host/routing`.
     pub path: String,
     /// The version, if the reference carried one.
     pub version: Option<semver::Version>,
@@ -170,10 +170,39 @@ pub fn check_compliance(guest_imports: &[String], host_provided: &[String]) -> C
     }
 }
 
+/// The `clean:host/*` interfaces CLNH-04 names as always-provided.
+///
+/// CLNH-04a states this set as a closed enumeration and forbids the prefix
+/// form outright. CLNH-04 enumerates these three by name — `config`, `log`,
+/// `clock` — rather than granting the whole package. That distinction became load-bearing on
+/// 2026-08-12, when the host-WIT rename moved clean-server's eight HTTP
+/// interfaces from `clean:http/*` into `clean:host/*`. A `starts_with(
+/// "clean:host/")` test would have silently reclassified `routing`, `request`,
+/// `response`, `websocket`, `sse`, `session-envelope`, and `realtime-sockets`
+/// as ambient — a permissions widening with no code change, no compile error,
+/// and no failing test.
+///
+/// Ambience is not the same claim as host-provided (CLNH-04a). An interface clean-server
+/// implements is offered through `HostProvided`, which a host declares per
+/// deployment and which `check_capabilities` already honours. Ambience means
+/// *every* host must provide it, on every target — `cli`, `browser`, `worker`,
+/// `edge` included. `routing` is not that: a CLI host has no routes. Treating
+/// it as ambient would let a guest importing `clean:host/routing` pass
+/// validation against a host that cannot satisfy it, deferring a startup error
+/// into a runtime one — exactly the silent-fallback CH-05/CLNH-06 forbids.
+const AMBIENT_HOST_INTERFACES: &[&str] = &[
+    "clean:host/config",
+    "clean:host/log",
+    "clean:host/clock",
+];
+
 /// Interfaces a guest may import without any bridge or host registration:
-/// the standard WASI stack plus `clean:host/*` (CH-03 / CLNH-04).
+/// the standard WASI stack plus the `clean:host/*` interfaces CLNH-04 names.
+///
+/// Deliberately an allow-list, not a package prefix. See
+/// [`AMBIENT_HOST_INTERFACES`] for why the prefix form is unsafe.
 pub fn is_ambient_interface(path: &str) -> bool {
-    path.starts_with("wasi:") || path.starts_with("clean:host/")
+    path.starts_with("wasi:") || AMBIENT_HOST_INTERFACES.contains(&path)
 }
 
 #[cfg(test)]
@@ -183,8 +212,8 @@ mod tests {
     #[test]
     fn matching_interface_and_version_complies() {
         let r = check_compliance(
-            &["clean:http/routing@0.1.0".into()],
-            &["clean:http/routing@0.1.0".into()],
+            &["clean:host/routing@0.1.0".into()],
+            &["clean:host/routing@0.1.0".into()],
         );
         assert!(r.is_compliant(), "{:?}", r.violations);
     }
@@ -193,11 +222,11 @@ mod tests {
     fn missing_interface_is_refused() {
         // Platform 16 §16.8 Case B: guest wants routing, host has none.
         let r = check_compliance(
-            &["clean:http/routing@0.1.0".into()],
+            &["clean:host/routing@0.1.0".into()],
             &["clean:host/dom@0.1.0".into()],
         );
         assert!(!r.is_compliant());
-        assert!(r.com017().contains("clean:http/routing@0.1.0"));
+        assert!(r.com017().contains("clean:host/routing@0.1.0"));
     }
 
     #[test]
@@ -216,8 +245,8 @@ mod tests {
     #[test]
     fn newer_host_patch_satisfies_an_older_guest() {
         let r = check_compliance(
-            &["clean:http/routing@0.1.2".into()],
-            &["clean:http/routing@0.1.7".into()],
+            &["clean:host/routing@0.1.2".into()],
+            &["clean:host/routing@0.1.7".into()],
         );
         assert!(r.is_compliant(), "{:?}", r.violations);
     }
@@ -225,8 +254,8 @@ mod tests {
     #[test]
     fn older_host_patch_does_not_satisfy_a_newer_guest() {
         let r = check_compliance(
-            &["clean:http/routing@0.1.7".into()],
-            &["clean:http/routing@0.1.2".into()],
+            &["clean:host/routing@0.1.7".into()],
+            &["clean:host/routing@0.1.2".into()],
         );
         assert!(!r.is_compliant());
     }
@@ -235,15 +264,15 @@ mod tests {
     fn extra_host_interfaces_are_allowed_but_reported() {
         // HCV-03: compliance is one-way.
         let r = check_compliance(
-            &["clean:http/routing@0.1.0".into()],
+            &["clean:host/routing@0.1.0".into()],
             &[
-                "clean:http/routing@0.1.0".into(),
-                "clean:http/websocket@0.1.0".into(),
+                "clean:host/routing@0.1.0".into(),
+                "clean:host/websocket@0.1.0".into(),
             ],
         );
         assert!(r.is_compliant());
         assert_eq!(r.unused_host_interfaces.len(), 1);
-        assert_eq!(r.unused_host_interfaces[0].path, "clean:http/websocket");
+        assert_eq!(r.unused_host_interfaces[0].path, "clean:host/websocket");
     }
 
     #[test]
@@ -259,6 +288,34 @@ mod tests {
     fn ambient_interfaces_are_recognised() {
         assert!(is_ambient_interface("wasi:cli/environment@0.3.0"));
         assert!(is_ambient_interface("clean:host/log"));
+        assert!(is_ambient_interface("clean:host/config"));
+        assert!(is_ambient_interface("clean:host/clock"));
         assert!(!is_ambient_interface("clean:session/store"));
+    }
+
+    /// The gate is an allow-list, not a `clean:host/` prefix test.
+    ///
+    /// clean-server's HTTP surface lives in `clean:host/*` since the
+    /// 2026-08-12 rename. Those interfaces are host-*provided* (declared via
+    /// `HostProvided`), not ambient: a `cli` or `worker` host has no routing,
+    /// so a guest importing one must still be checked against what its host
+    /// actually offers. If this test fails, the ambient set has silently
+    /// widened and guests can import HTTP interfaces on hosts that lack them.
+    #[test]
+    fn host_provided_http_interfaces_are_not_ambient() {
+        for path in [
+            "clean:host/routing",
+            "clean:host/request",
+            "clean:host/response",
+            "clean:host/websocket",
+            "clean:host/sse",
+            "clean:host/session-envelope",
+            "clean:host/realtime-sockets",
+        ] {
+            assert!(
+                !is_ambient_interface(path),
+                "`{path}` must be satisfied by HostProvided, not granted ambiently"
+            );
+        }
     }
 }

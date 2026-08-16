@@ -184,10 +184,24 @@ pub fn check_imports(bridge: &DiscoveredBridge) -> Result<(), HostError> {
 }
 
 /// What a bridge is permitted to import.
+///
+/// Note this is a *wider* grant than [`validate::is_ambient_interface`] gives a
+/// guest, and deliberately so — CLNH-04b records the asymmetry as intended and
+/// forbids "reconciling" the two gates. CLNH-25 resolves a bridge's `clean:host/*`
+/// imports against clean-host-core's built-in interfaces, whereas CLNH-04
+/// names only `config`, `log`, and `clock` as always-provided to guests. A
+/// bridge is host-side infrastructure the operator installed on purpose; a
+/// guest is untrusted application code. The 2026-08-12 rename moved
+/// clean-server's HTTP interfaces into `clean:host/*`, so this prefix now also
+/// admits `routing`, `sse`, and friends — acceptable here (a bridge calling
+/// back into the host's response envelope is the documented inverse-direction
+/// pattern) but NOT acceptable for guests, which is why that gate is an
+/// explicit allow-list instead.
 fn import_is_allowed(interface: &str) -> bool {
     let path = InterfaceRef::parse(interface).path;
 
-    // The standard stack every component gets (CH-03).
+    // The standard stack every component gets (CH-03), plus the host's own
+    // built-in interfaces a bridge may resolve against (CLNH-25).
     if path.starts_with("wasi:") || path.starts_with("clean:host/") {
         return true;
     }
