@@ -19,6 +19,7 @@ wac-graph = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+wat = { workspace = true }
 
 [[bench]]
 name = "pool"

@@ -99,8 +99,12 @@ pub struct HostProvided {
 }
 
 struct Composed {
-    component: Arc<dyn LoadedComponent>,
     pool: Arc<InstancePool>,
+    /// The `[bridges]` keys that were actually composed into the guest — the
+    /// configured set minus the ones the guest never imported. The manifest
+    /// reports from this rather than from the config, so it describes what is
+    /// live rather than what was asked for (CLNH-44).
+    composed_bridges: Vec<String>,
 }
 
 /// The main entry point a concrete host constructs at startup.
@@ -307,8 +311,8 @@ impl Host {
         .map_err(HostError::from)?;
 
         Ok(Composed {
-            component,
             pool: Arc::new(pool),
+            composed_bridges: wanted.iter().map(|b| b.interface.clone()).collect(),
         })
     }
 
@@ -339,7 +343,6 @@ impl Host {
             .as_ref()
             .ok_or_else(|| HostError::Composition("emit_manifest called before compose".into()))?;
 
-        let _ = &composed.component;
         let mut entries = Vec::new();
 
         // Host-provided interfaces are live whether or not this particular
@@ -354,12 +357,34 @@ impl Host {
             });
         }
 
+        // A configured bridge is only `Active` if composition actually wired it
+        // in. Reporting the `[bridges]` map verbatim would restate the operator's
+        // config back to them and call every line live, including the ones
+        // `build_composition` filtered out — the manifest exists precisely to
+        // distinguish those two things (CLNH-44..47).
         for (iface, path) in &self.config.bridges {
+            let composed_in = composed
+                .composed_bridges
+                .iter()
+                .any(|c| InterfaceRef::parse(c).path == InterfaceRef::parse(iface).path);
+
+            let (status, reason) = if composed_in {
+                (CapabilityStatus::Active, None)
+            } else {
+                (
+                    CapabilityStatus::Unavailable,
+                    Some(format!(
+                        "configured in `[bridges]` but the guest does not import `{iface}`, \
+                         so no bridge was composed for it"
+                    )),
+                )
+            };
+
             entries.push(CapabilityEntry {
                 interface: iface.clone(),
-                status: CapabilityStatus::Active,
+                status,
                 component: Some(path.display().to_string()),
-                reason: None,
+                reason,
             });
         }
 
