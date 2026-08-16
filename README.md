@@ -32,13 +32,16 @@ as a no-op that fails mysteriously at request time
 ## Status
 
 M0. Implemented: config parsing, the `WasmRuntime` seam, the Wasmtime adapter,
-instance pooling, Moment 3 load-time validation (`COM017`), capability manifest
-emission, and the shared HCV-06 parity helper.
+instance pooling, bridge discovery and WAC composition, Moment 3 load-time
+validation (`COM017`), capability manifest emission, the `clean:host/log` sink
+seam, and the shared HCV-06 parity helper.
+
+Composition is exercised end to end by `clean-server`, not by this crate's own
+tests: there is no `.wasm` fixture here, so the WAC path and the Wasmtime
+instantiate path have no coverage inside this workspace.
 
 Not yet implemented, and rejected loudly rather than silently ignored:
 
-- **Bridge composition.** A `[bridges]` entry is a startup error until Phase 3
-  wires WAC composition.
 - **Signature identity.** Moment 3 checks interface presence and version
   compatibility; the third leg of HCV-03 needs the resolved type graph and lands
   with the bridge work.
