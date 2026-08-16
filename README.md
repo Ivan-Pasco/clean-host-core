@@ -36,9 +36,9 @@ instance pooling, bridge discovery and WAC composition, Moment 3 load-time
 validation (`COM017`), capability manifest emission, the `clean:host/log` sink
 seam, and the shared HCV-06 parity helper.
 
-Composition is exercised end to end by `clean-server`, not by this crate's own
-tests: there is no `.wasm` fixture here, so the WAC path and the Wasmtime
-instantiate path have no coverage inside this workspace.
+Composition is covered end to end by `crates/clean-host-core-wasmtime/tests/`,
+which compiles a real guest and a real bridge from `.wat` at test time, composes
+them with WAC, and loads the result under Wasmtime.
 
 Not yet implemented, and rejected loudly rather than silently ignored:
 
