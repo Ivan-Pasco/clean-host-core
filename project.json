@@ -1,0 +1,11 @@
+{
+  "project": "clean-language",
+  "repositories": [
+    { "owner": "Ivan-Pasco", "name": "clean-language-foundation-drafts", "layer": 0, "path": "clean-language-foundation-drafts" },
+    { "owner": "Ivan-Pasco", "name": "clean-language-foundation", "layer": 1, "path": "clean-language-foundation" },
+    { "owner": "Ivan-Pasco", "name": "clean-language-norms", "layer": 2, "path": "clean-language-norms" },
+    { "owner": "Ivan-Pasco", "name": "clean-language-compiler", "layer": 3, "component": "compiler", "path": "clean-language-compiler" },
+    { "owner": "Ivan-Pasco", "name": "clean-host-core", "layer": 3, "component": "host-core", "path": "clean-host-core" },
+    { "owner": "Ivan-Pasco", "name": "clean-server", "layer": 3, "component": "server", "path": "clean-server" }
+  ]
+}
