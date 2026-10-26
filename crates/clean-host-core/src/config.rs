@@ -379,6 +379,12 @@ struct RawRuntime {
 mod tests {
     use super::*;
 
+    /// The `world` line inside `MINIMAL`. Kept as a constant so the
+    /// "missing world" test below cannot silently stop removing it when the
+    /// value changes (CMOD-01 moved it from `clean:host/server@0.1` to the
+    /// bare world name `server`).
+    const MINIMAL_WORLD_LINE: &str = "world = \"server\"";
+
     const MINIMAL: &str = r#"
 [host]
 name = "clean-server"
@@ -388,7 +394,7 @@ component-model = "0.3.0"
 [guest]
 name = "app"
 wasm = "./dist/app.wasm"
-world = "clean:host/server@0.1"
+world = "server"
 "#;
 
     fn parse(text: &str) -> Result<HostConfig, HostError> {
@@ -434,7 +440,12 @@ world = "clean:host/server@0.1"
 
     #[test]
     fn missing_required_key_names_the_key() {
-        let text = MINIMAL.replace("world = \"clean:host/server@0.1\"", "");
+        let text = MINIMAL.replace(MINIMAL_WORLD_LINE, "");
+        assert!(
+            text != MINIMAL,
+            "the world line was not removed — MINIMAL_WORLD_LINE has drifted from \
+             MINIMAL, so this test would assert nothing"
+        );
         let err = parse(&text).unwrap_err();
         assert!(err.to_string().contains("[guest] world"), "{err}");
     }

@@ -164,7 +164,7 @@ deployment = "prod-eu-1"
 [guest]
 name = "app"
 wasm = "./app.wasm"
-world = "clean:host/server@0.1"
+world = "server"
 "#,
             "/srv/host.toml",
         )
@@ -177,7 +177,7 @@ world = "clean:host/server@0.1"
             &config(),
             vec![
                 CapabilityEntry {
-                    interface: "clean:http/routing@0.1.0".into(),
+                    interface: "clean:host/routing@0.1.0".into(),
                     status: CapabilityStatus::Active,
                     component: None,
                     reason: None,
