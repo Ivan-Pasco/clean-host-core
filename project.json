@@ -7,5 +7,8 @@
     { "owner": "Ivan-Pasco", "name": "clean-language-compiler", "layer": 3, "component": "compiler", "path": "clean-language-compiler" },
     { "owner": "Ivan-Pasco", "name": "clean-host-core", "layer": 3, "component": "host-core", "path": "clean-host-core" },
     { "owner": "Ivan-Pasco", "name": "clean-server", "layer": 3, "component": "server", "path": "clean-server" }
+  ],
+  "derived_norms": [
+    { "type": "grammar", "use_case": "/clean-derived-norms:derive-grammar" }
   ]
 }
