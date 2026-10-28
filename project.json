@@ -10,6 +10,7 @@
     { "owner": "Ivan-Pasco", "name": "clean-server", "layer": 4, "component": "server", "path": "clean-server" }
   ],
   "derived_norms": [
-    { "type": "grammar", "use_case": "/clean-derived-norms:derive-grammar" }
+    { "type": "grammar", "use_case": "/clean-derived-norms:derive-grammar" },
+    { "type": "semantics", "use_case": "/clean-derived-norms:derive-semantics" }
   ]
 }
