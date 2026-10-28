@@ -1,0 +1,20 @@
+{
+  "extraKnownMarketplaces": {
+    "jpchauny-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "jpchauny/claude-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "development-methodology@jpchauny-plugins": true,
+    "utilities@jpchauny-plugins": true,
+    "code-implementation@jpchauny-plugins": true
+  },
+  "permissions": {
+    "deny": [
+      "Edit(//**/clean-language-acceptance/**)"
+    ]
+  }
+}
