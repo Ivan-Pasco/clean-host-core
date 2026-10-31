@@ -7,7 +7,8 @@
     { "owner": "Ivan-Pasco", "name": "clean-language-acceptance", "layer": 3, "path": "clean-language-acceptance" },
     { "owner": "Ivan-Pasco", "name": "clean-language-compiler", "layer": 4, "component": "compiler", "path": "clean-language-compiler" },
     { "owner": "Ivan-Pasco", "name": "clean-host-core", "layer": 4, "component": "host-core", "path": "clean-host-core" },
-    { "owner": "Ivan-Pasco", "name": "clean-server", "layer": 4, "component": "server", "path": "clean-server" }
+    { "owner": "Ivan-Pasco", "name": "clean-server", "layer": 4, "component": "server", "path": "clean-server" },
+    { "owner": "jpchauny", "name": "clean-language-tooling", "role": "tooling", "path": "clean-language-tooling" }
   ],
   "derived_norms": [
     { "type": "grammar", "use_case": "/clean-derived-norms:derive-grammar" },
